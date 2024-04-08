@@ -27,10 +27,12 @@ pub fn example_test() {
     actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
 
   // Register the actors specifying the wrapper (`Actors`) variant.
+  // Note that the `subject` argument is not wrapped in the Actors
+  // type here.
   singularity.register(with: registry, key: ActorA, subject: actor_a)
   singularity.register(with: registry, key: ActorB, subject: actor_b)
 
-  // Retrieve and verify registered actors.
+  // Retrieve and verify registered actors.  These are wrapped.
   let assert ActorA(got_a) =
     singularity.require(from: registry, key: ActorA, timeout_ms: 1000)
   let assert ActorB(got_b) =
