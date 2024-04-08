@@ -18,27 +18,27 @@ type Actors {
 }
 
 pub fn example_test() {
+  let assert Ok(registry) = singularity.start()
+
+  // Create a couple dummy actors, having unique message types.
   let assert Ok(actor_a) =
     actor.start(Nil, fn(_msg: MsgA, state) { actor.continue(state) })
   let assert Ok(actor_b) =
     actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
 
-  // Register a couple actors with different message types.
-  let assert Ok(reg) = singularity.start()
-  singularity.register(reg, ActorA, actor_a)
-  singularity.register(reg, ActorB, actor_b)
+  // Register the actors specifying the wrapper (`Actors`) variant.
+  singularity.register(registry, ActorA, actor_a)
+  singularity.register(registry, ActorB, actor_b)
 
   // Retrieve and verify registered actors.
-  let assert ActorA(got_a) = singularity.require(reg, ActorA)
-  let assert ActorB(got_b) = singularity.require(reg, ActorB)
+  let assert ActorA(got_a) = singularity.require(registry, ActorA)
+  let assert ActorB(got_b) = singularity.require(registry, ActorB)
 
   got_a
   |> should.equal(actor_a)
 
   got_b
   |> should.equal(actor_b)
-
-  Nil
 }
 
 pub fn try_get_test() {
