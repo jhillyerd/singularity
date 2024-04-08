@@ -27,14 +27,14 @@ pub fn example_test() {
     actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
 
   // Register the actors specifying the wrapper (`Actors`) variant.
-  singularity.register(registry, ActorA, actor_a)
-  singularity.register(registry, ActorB, actor_b)
+  singularity.register(with: registry, key: ActorA, subject: actor_a)
+  singularity.register(with: registry, key: ActorB, subject: actor_b)
 
   // Retrieve and verify registered actors.
   let assert ActorA(got_a) =
-    singularity.require(registry, ActorA, timeout_ms: 1000)
+    singularity.require(from: registry, key: ActorA, timeout_ms: 1000)
   let assert ActorB(got_b) =
-    singularity.require(registry, ActorB, timeout_ms: 1000)
+    singularity.require(from: registry, key: ActorB, timeout_ms: 1000)
 
   got_a
   |> should.equal(actor_a)

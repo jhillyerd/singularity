@@ -101,10 +101,11 @@ pub fn stop(actor: Subject(Message(wrap))) {
 /// Registered actor processes will be monitored.  Processes that exit will
 /// be removed from the registry automatically.
 ///
+/// Returns the subject unchanged, for ease of use in pipelines.
 pub fn register(
-  into actor: Subject(Message(wrap)),
+  with actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
-  insert subj: Subject(msg),
+  subject subj: Subject(msg),
 ) -> Subject(msg) {
   let pid = process.subject_owner(subj)
   let wrapped = variant(subj)
@@ -118,7 +119,7 @@ pub fn register(
 /// the actor is not present in the registry, returns `None`.
 ///
 pub fn try_get(
-  into actor: Subject(Message(wrap)),
+  from actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
 ) -> Result(wrap, Nil) {
   let key = cons_variant_name(variant)
@@ -134,7 +135,7 @@ pub fn try_get(
 /// depend on them.
 ///
 pub fn require(
-  into actor: Subject(Message(wrap)),
+  from actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   timeout_ms timeout: Int,
 ) -> wrap {
