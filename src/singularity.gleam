@@ -1,4 +1,43 @@
-//// Registry for shared singleton actors.
+//// Singularity is a registry for shared singleton actors, in Gleam.
+////
+//// When an actor's process exits, it will be removed from the registry
+//// automatically.  Fetching an actor using the [require](#require) function
+//// will block until that actor has been registered.  These two properties
+//// allow OTP supervisors to start your actors only when their dependencies
+//// are ready.
+////
+//// ### Example Usage
+////
+//// ```
+//// import actor_a
+//// import actor_b
+////
+//// // Define a wrapper type for the actors (Subjects) you want register.
+//// type Actors {
+////   ActorA(Subject(actor_a.Message))
+////   ActorB(Subject(actor_b.Message))
+//// }
+////
+//// pub fn main() {
+////   let assert Ok(registry) = singularity.start()
+////   let assert Ok(actor_a_subj) = actor_a.start()
+////   let assert Ok(actor_b_subj) = actor_b.start()
+////
+////   // Register the actors specifying your wrapper (`Actors`) variant.
+////   singularity.register(registry, ActorA, actor_a_subj)
+////   singularity.register(registry, ActorB, actor_b_subj)
+////
+////   // Retrieve registered actors, each will be returned via your
+////   // wrapper type.
+////   let assert ActorA(got_a) =
+////     singularity.require(registry, ActorA, timeout_ms: 1000)
+////   let assert ActorB(got_b) =
+////     singularity.require(registry, ActorB, timeout_ms: 1000)
+//// }
+//// ```
+////
+//// The example above is for illustrative purposes only; it will not compile.
+//// Please see the README and tests for concrete examples.
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
@@ -59,7 +98,7 @@ pub fn stop(actor: Subject(Message(wrap))) {
 
 /// Registers an actor, using the actors wrapper type constructor as a key.
 ///
-/// Registered actors processes will be monitored.  Processes that exit will
+/// Registered actor processes will be monitored.  Processes that exit will
 /// be removed from the registry automatically.
 ///
 pub fn register(
@@ -76,7 +115,7 @@ pub fn register(
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
-/// the actor is not present in the registry, returns None.
+/// the actor is not present in the registry, returns `None`.
 ///
 pub fn try_get(
   into actor: Subject(Message(wrap)),
