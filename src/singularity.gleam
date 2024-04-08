@@ -8,6 +8,7 @@ import gleam/erlang/process.{
 }
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/result
 
 const require_timeout_ms = 5000
 
@@ -60,6 +61,9 @@ pub fn stop(actor: Subject(Message(wrap))) {
 
 /// Registers an actor, using the actors wrapper type constructor as a key.
 ///
+/// Registered actors processes will be monitored.  Processes that exit will
+/// be removed from the registry automatically.
+///
 pub fn register(
   into actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
@@ -71,6 +75,17 @@ pub fn register(
 
   actor.send(actor, Register(key, wrapped, pid))
   subj
+}
+
+/// Retrieves an actor, using the actors wrapper type constructor as a key.  If
+/// the actor is not present in the registry, returns None.
+///
+pub fn try_get(
+  into actor: Subject(Message(wrap)),
+  key variant: fn(Subject(msg)) -> wrap,
+) -> Result(wrap, Nil) {
+  let key = cons_variant_name(variant)
+  actor.call(actor, TryGet(_, key), 10)
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
@@ -86,6 +101,7 @@ pub fn require(
 }
 
 pub opaque type Message(wrap) {
+  TryGet(reply_with: Subject(Result(wrap, Nil)), key: String)
   Require(reply_with: Subject(wrap), key: String, timeout: Int)
   Register(key: String, wrapped: wrap, pid: Pid)
   ActorExit(key: String, pdown: process.ProcessDown)
@@ -97,6 +113,15 @@ fn loop(
   state: State(wrap),
 ) -> actor.Next(Message(wrap), State(wrap)) {
   case message {
+    TryGet(reply_with, key) -> {
+      state.actors
+      |> dict.get(key)
+      |> result.map(fn(actor) { actor.actor })
+      |> actor.send(reply_with, _)
+
+      actor.continue(state)
+    }
+
     Require(reply_with, key, timeout) ->
       get_with_retry(state, key, reply_with, timeout)
 

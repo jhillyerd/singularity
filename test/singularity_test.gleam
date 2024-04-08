@@ -40,3 +40,25 @@ pub fn example_test() {
 
   Nil
 }
+
+pub fn try_get_test() {
+  let assert Ok(reg) = singularity.start()
+
+  // Verify actors are not registered.
+  singularity.try_get(reg, ActorA)
+  |> should.be_error()
+  singularity.try_get(reg, ActorB)
+  |> should.be_error()
+
+  // Register an actor.
+  let assert Ok(actor_a) =
+    actor.start(Nil, fn(_msg: MsgA, state) { actor.continue(state) })
+  singularity.register(reg, ActorA, actor_a)
+
+  // Retrieve and verify registered actors.
+  let assert Ok(ActorA(got_a)) = singularity.try_get(reg, ActorA)
+  let assert Error(Nil) = singularity.try_get(reg, ActorB)
+
+  got_a
+  |> should.equal(actor_a)
+}
