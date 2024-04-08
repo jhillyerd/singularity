@@ -61,7 +61,7 @@ pub fn register(
 ) -> Subject(msg) {
   let pid = process.subject_owner(subj)
   let value = variant(subj)
-  let key = get_variant_name(value)
+  let key = get_act_variant_name(value)
 
   actor.send(actor, Register(key, value, pid))
   subj
@@ -75,15 +75,7 @@ pub fn require(
   into actor: Subject(Message(act)),
   key variant: fn(Subject(msg)) -> act,
 ) -> act {
-  // Use a fake Subject to extract the variant name from the constructor.
-  // Coerce safety: no messages will be sent to the temporary Subject.
-  let key =
-    #(Nil, Nil)
-    |> dynamic.from
-    |> dynamic.unsafe_coerce
-    |> variant
-    |> get_variant_name
-
+  let key = cons_variant_name(variant)
   actor.call(actor, Require(_, key, require_timeout_ms), require_timeout_ms)
 }
 
@@ -221,12 +213,26 @@ fn get_with_retry(
   actor.continue(state)
 }
 
-/// Extracts the name of this variant from the caller's actor type.
-fn get_variant_name(value: act) -> String {
+/// Extracts the name of this variant from an `act` (the caller's actor
+/// wrapper.)
+///
+fn get_act_variant_name(value: act) -> String {
   let assert Ok(atom) =
     value
     |> dynamic.from
     |> dynamic.element(0, atom.from_dynamic)
 
   atom.to_string(atom)
+}
+
+/// Extracts the name of this variant from the constructor.
+///
+fn cons_variant_name(varfn: fn(Subject(msg)) -> act) {
+  // Use a fake Subject to extract the variant name from the constructor.
+  // Coerce safety: no messages will be sent to the temporary Subject.
+  #(Nil, Nil)
+  |> dynamic.from
+  |> dynamic.unsafe_coerce
+  |> varfn
+  |> get_act_variant_name
 }
