@@ -13,24 +13,30 @@ const require_timeout_ms = 5000
 
 const require_retry_delay_ms = 100
 
-type State(act) {
+/// Registry state, parameterized by the users actor wrapper type.
+///
+type State(wrap) {
   State(
     /// Subject used to send retries, and rebuild selector.
-    self: Subject(Message(act)),
+    self: Subject(Message(wrap)),
     /// Current message selector, updated by process monitoring.
-    selector: Selector(Message(act)),
+    selector: Selector(Message(wrap)),
     /// Registered actors.
-    actors: Dict(String, Actor(act)),
+    actors: Dict(String, Actor(wrap)),
   )
 }
 
-type Actor(act) {
-  Actor(actor: act, pid: Pid, monitor: ProcessMonitor)
+/// An individual registered actor.
+///
+type Actor(wrap) {
+  Actor(actor: wrap, pid: Pid, monitor: ProcessMonitor)
 }
 
-/// Starts the registry actor.  Gleam actors are linked to the parent process
-/// by default.
-pub fn start() -> Result(Subject(Message(act)), actor.StartError) {
+/// Starts the registry.
+///
+/// Note: Gleam actors are linked to the parent process by default.
+///
+pub fn start() -> Result(Subject(Message(wrap)), actor.StartError) {
   actor.start_spec(actor.Spec(
     init: fn() {
       let self = process.new_subject()
@@ -48,54 +54,54 @@ pub fn start() -> Result(Subject(Message(act)), actor.StartError) {
 
 /// Shuts down the registry.  Does not affect registered actors.
 ///
-pub fn stop(actor: Subject(Message(act))) {
+pub fn stop(actor: Subject(Message(wrap))) {
   actor.send(actor, Shutdown)
 }
 
-/// Registers an actor, using the actors type constructor as a key.
+/// Registers an actor, using the actors wrapper type constructor as a key.
 ///
 pub fn register(
-  into actor: Subject(Message(act)),
-  key variant: fn(Subject(msg)) -> act,
+  into actor: Subject(Message(wrap)),
+  key variant: fn(Subject(msg)) -> wrap,
   insert subj: Subject(msg),
 ) -> Subject(msg) {
   let pid = process.subject_owner(subj)
-  let value = variant(subj)
-  let key = get_act_variant_name(value)
+  let wrapped = variant(subj)
+  let key = get_act_variant_name(wrapped)
 
-  actor.send(actor, Register(key, value, pid))
+  actor.send(actor, Register(key, wrapped, pid))
   subj
 }
 
-/// Retrieves an actor, using the actors type constructor as a key.  If the
-/// actor is not present in the registry, the request will be retried for
+/// Retrieves an actor, using the actors wrapper type constructor as a key.  If
+/// the actor is not present in the registry, the request will be retried for
 /// `require_timeout_ms` before crashing.
 ///
 pub fn require(
-  into actor: Subject(Message(act)),
-  key variant: fn(Subject(msg)) -> act,
-) -> act {
+  into actor: Subject(Message(wrap)),
+  key variant: fn(Subject(msg)) -> wrap,
+) -> wrap {
   let key = cons_variant_name(variant)
   actor.call(actor, Require(_, key, require_timeout_ms), require_timeout_ms)
 }
 
-pub opaque type Message(act) {
-  Require(reply_with: Subject(act), key: String, timeout: Int)
-  Register(key: String, value: act, pid: Pid)
+pub opaque type Message(wrap) {
+  Require(reply_with: Subject(wrap), key: String, timeout: Int)
+  Register(key: String, wrapped: wrap, pid: Pid)
   ActorExit(key: String, pdown: process.ProcessDown)
   Shutdown
 }
 
 fn loop(
-  message: Message(act),
-  state: State(act),
-) -> actor.Next(Message(act), State(act)) {
+  message: Message(wrap),
+  state: State(wrap),
+) -> actor.Next(Message(wrap), State(wrap)) {
   case message {
     Require(reply_with, key, timeout) ->
       get_with_retry(state, key, reply_with, timeout)
 
-    Register(key, value, pid) -> {
-      let state = handle_register(state, key, value, pid)
+    Register(key, wrapped, pid) -> {
+      let state = handle_register(state, key, wrapped, pid)
       state
       |> actor.continue()
       |> actor.with_selector(state.selector)
@@ -116,11 +122,11 @@ fn loop(
 }
 
 fn handle_register(
-  state: State(act),
+  state: State(wrap),
   key: String,
-  value: act,
+  wrapped: wrap,
   pid: Pid,
-) -> State(act) {
+) -> State(wrap) {
   // Remove current actor if present.
   let state = remove(state, key, None)
 
@@ -131,7 +137,7 @@ fn handle_register(
     |> process.selecting_process_down(monitor, ActorExit(key: key, pdown: _))
 
   // Insert into registry.
-  let actor = Actor(actor: value, pid: pid, monitor: monitor)
+  let actor = Actor(actor: wrapped, pid: pid, monitor: monitor)
   let actors = dict.insert(state.actors, for: key, insert: actor)
 
   State(..state, actors: actors, selector: selector)
@@ -143,8 +149,8 @@ fn handle_register(
 ///   removing a newly registered actor instead of the one it replaced.
 ///   Specifying `None` will always remove the actor.
 ///
-fn remove(state: State(act), key: String, when_pid: Option(Pid)) -> State(act) {
-  let rm = fn(actor: Actor(act)) {
+fn remove(state: State(wrap), key: String, when_pid: Option(Pid)) -> State(wrap) {
+  let rm = fn(actor: Actor(wrap)) {
     process.demonitor_process(actor.monitor)
     let actors = dict.delete(state.actors, key)
     let selector = build_selector(state.self, state.actors)
@@ -165,10 +171,11 @@ fn remove(state: State(act), key: String, when_pid: Option(Pid)) -> State(act) {
 }
 
 /// Rebuilds the selector for the current set of monitored actors.
+///
 fn build_selector(
-  self: Subject(Message(act)),
-  actors: Dict(String, Actor(act)),
-) -> Selector(Message(act)) {
+  self: Subject(Message(wrap)),
+  actors: Dict(String, Actor(wrap)),
+) -> Selector(Message(wrap)) {
   let base_selector =
     process.new_selector()
     |> process.selecting(self, fn(msg) { msg })
@@ -182,15 +189,15 @@ fn build_selector(
 }
 
 fn get_with_retry(
-  state: State(act),
+  state: State(wrap),
   key: String,
-  reply_with: Subject(act),
+  reply_with: Subject(wrap),
   millis timeout: Int,
-) -> actor.Next(Message(act), State(act)) {
+) -> actor.Next(Message(wrap), State(wrap)) {
   case dict.get(state.actors, key) {
-    Ok(value) -> {
+    Ok(actor) -> {
       // Actor found, respond to caller.
-      actor.send(reply_with, value.actor)
+      actor.send(reply_with, actor.actor)
       Nil
     }
 
@@ -213,12 +220,11 @@ fn get_with_retry(
   actor.continue(state)
 }
 
-/// Extracts the name of this variant from an `act` (the caller's actor
-/// wrapper.)
+/// Extracts the name of this variant from the caller's actor wrapper.
 ///
-fn get_act_variant_name(value: act) -> String {
+fn get_act_variant_name(wrapped: wrap) -> String {
   let assert Ok(atom) =
-    value
+    wrapped
     |> dynamic.from
     |> dynamic.element(0, atom.from_dynamic)
 
@@ -227,7 +233,7 @@ fn get_act_variant_name(value: act) -> String {
 
 /// Extracts the name of this variant from the constructor.
 ///
-fn cons_variant_name(varfn: fn(Subject(msg)) -> act) {
+fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) {
   // Use a fake Subject to extract the variant name from the constructor.
   // Coerce safety: no messages will be sent to the temporary Subject.
   #(Nil, Nil)
