@@ -10,8 +10,6 @@ import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
 
-const require_timeout_ms = 5000
-
 const require_retry_delay_ms = 100
 
 /// Registry state, parameterized by the users actor wrapper type.
@@ -89,17 +87,24 @@ pub fn try_get(
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
-/// the actor is not present in the registry, the request will be retried for
-/// `require_timeout_ms` before crashing.
+/// the actor is not present in the registry, the request will be retried
+/// every 100ms for a total of `timeout_ms` before crashing.
+///
+/// If your actors need to establish network connections during startup,
+/// consider using long (5000ms+) timeouts for them and any actors that
+/// depend on them.
 ///
 pub fn require(
   into actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
+  timeout_ms timeout: Int,
 ) -> wrap {
   let key = cons_variant_name(variant)
-  actor.call(actor, Require(_, key, require_timeout_ms), require_timeout_ms)
+  actor.call(actor, Require(_, key, timeout), timeout)
 }
 
+/// Singularity's message/Subject type.
+///
 pub opaque type Message(wrap) {
   TryGet(reply_with: Subject(Result(wrap, Nil)), key: String)
   Require(reply_with: Subject(wrap), key: String, timeout: Int)
