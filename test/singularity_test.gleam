@@ -29,8 +29,8 @@ pub fn example_test() {
   singularity.register(reg, ActorB, actor_b)
 
   // Retrieve and verify registered actors.
-  let assert ActorA(got_a) = singularity.get(reg, ActorA)
-  let assert ActorB(got_b) = singularity.get(reg, ActorB)
+  let assert ActorA(got_a) = singularity.require(reg, ActorA)
+  let assert ActorB(got_b) = singularity.require(reg, ActorB)
 
   got_a
   |> should.equal(actor_a)

@@ -9,9 +9,9 @@ import gleam/erlang/process.{
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 
-const get_timeout_ms = 5000
+const require_timeout_ms = 5000
 
-const get_retry_delay_ms = 100
+const require_retry_delay_ms = 100
 
 type State(act) {
   State(
@@ -69,9 +69,9 @@ pub fn register(
 
 /// Retrieves an actor, using the actors type constructor as a key.  If the
 /// actor is not present in the registry, the request will be retried for
-/// `get_timeout_ms` before crashing.
+/// `require_timeout_ms` before crashing.
 ///
-pub fn get(
+pub fn require(
   into actor: Subject(Message(act)),
   key variant: fn(Subject(msg)) -> act,
 ) -> act {
@@ -84,11 +84,11 @@ pub fn get(
     |> variant
     |> get_variant_name
 
-  actor.call(actor, Get(_, key, get_timeout_ms), get_timeout_ms)
+  actor.call(actor, Require(_, key, require_timeout_ms), require_timeout_ms)
 }
 
 pub opaque type Message(act) {
-  Get(reply_with: Subject(act), key: String, timeout: Int)
+  Require(reply_with: Subject(act), key: String, timeout: Int)
   Register(key: String, value: act, pid: Pid)
   ActorExit(key: String, pdown: process.ProcessDown)
   Shutdown
@@ -99,7 +99,7 @@ fn loop(
   state: State(act),
 ) -> actor.Next(Message(act), State(act)) {
   case message {
-    Get(reply_with, key, timeout) ->
+    Require(reply_with, key, timeout) ->
       get_with_retry(state, key, reply_with, timeout)
 
     Register(key, value, pid) -> {
@@ -204,12 +204,12 @@ fn get_with_retry(
 
     Error(Nil) -> {
       // Actor not found, retry this request after a delay.
-      case timeout > get_retry_delay_ms {
+      case timeout > require_retry_delay_ms {
         True -> {
           process.send_after(
             state.self,
-            get_retry_delay_ms,
-            Get(reply_with, key, timeout - get_retry_delay_ms),
+            require_retry_delay_ms,
+            Require(reply_with, key, timeout - require_retry_delay_ms),
           )
           Nil
         }
