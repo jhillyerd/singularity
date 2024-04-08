@@ -54,7 +54,7 @@ pub fn stop(actor: Subject(Message(act))) {
 
 /// Registers an actor, using the actors type constructor as a key.
 ///
-pub fn put(
+pub fn register(
   into actor: Subject(Message(act)),
   key variant: fn(Subject(msg)) -> act,
   insert subj: Subject(msg),
@@ -63,7 +63,7 @@ pub fn put(
   let value = variant(subj)
   let key = get_variant_name(value)
 
-  actor.send(actor, Put(key, value, pid))
+  actor.send(actor, Register(key, value, pid))
   subj
 }
 
@@ -89,7 +89,7 @@ pub fn get(
 
 pub opaque type Message(act) {
   Get(reply_with: Subject(act), key: String, timeout: Int)
-  Put(key: String, value: act, pid: Pid)
+  Register(key: String, value: act, pid: Pid)
   ActorExit(key: String, pdown: process.ProcessDown)
   Shutdown
 }
@@ -102,8 +102,8 @@ fn loop(
     Get(reply_with, key, timeout) ->
       get_with_retry(state, key, reply_with, timeout)
 
-    Put(key, value, pid) -> {
-      let state = register(state, key, value, pid)
+    Register(key, value, pid) -> {
+      let state = handle_register(state, key, value, pid)
       state
       |> actor.continue()
       |> actor.with_selector(state.selector)
@@ -123,7 +123,12 @@ fn loop(
   }
 }
 
-fn register(state: State(act), key: String, value: act, pid: Pid) -> State(act) {
+fn handle_register(
+  state: State(act),
+  key: String,
+  value: act,
+  pid: Pid,
+) -> State(act) {
   // Remove current actor if present.
   let state = remove(state, key, None)
 

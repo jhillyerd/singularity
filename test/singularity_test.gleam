@@ -25,8 +25,8 @@ pub fn example_test() {
 
   // Register a couple actors with different message types.
   let assert Ok(reg) = singularity.start()
-  singularity.put(reg, ActorA, actor_a)
-  singularity.put(reg, ActorB, actor_b)
+  singularity.register(reg, ActorA, actor_a)
+  singularity.register(reg, ActorB, actor_b)
 
   // Retrieve and verify registered actors.
   let assert ActorA(got_a) = singularity.get(reg, ActorA)
