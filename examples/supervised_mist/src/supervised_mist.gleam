@@ -5,6 +5,7 @@ import gleam/erlang/process.{type Subject}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
 import gleam/io
+import gleam/otp/actor
 import gleam/otp/supervisor
 import gleam/result
 import mist
@@ -50,6 +51,19 @@ pub fn main() {
       |> result.map(singularity.register(registry, Adder, subject: _))
     })
 
+  // Mist uses supervisors internally, so we can treat it as one.
+  let mist_child =
+    supervisor.supervisor(fn(_state) {
+      io.println("## Starting mist")
+      let handler = fn(req) { handle_request(req, registry) }
+
+      handler
+      |> mist.new
+      |> mist.port(3000)
+      |> mist.start_http
+      |> result.replace_error(actor.InitFailed(process.Abnormal("mist error")))
+    })
+
   // Start the supervisor.
   let assert Ok(_) =
     supervisor.start_spec(
@@ -62,16 +76,10 @@ pub fn main() {
           |> supervisor.add(counter_a_child)
           |> supervisor.add(counter_b_child)
           |> supervisor.add(adder_child)
+          |> supervisor.add(mist_child)
         },
       ),
     )
-
-  let handler = fn(req) { handle_request(req, registry) }
-
-  handler
-  |> mist.new
-  |> mist.port(3000)
-  |> mist.start_http
 
   // Increment counter_b to make things interesting.
   let assert CounterB(counter_b) =
