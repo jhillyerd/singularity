@@ -5,11 +5,79 @@
 
 Singularity is a registry for shared singleton actors, in Gleam.
 
+## Purpose
+
+An actor registry is a system for keeping track of actors over time.  A registry
+is most useful when combined with OTP supervision, as an actor will have a
+different PID and [Subject] after being restarted.  Messages sent to the old
+Subject will yield no response.
+
+By registering your actors within the supervisor [worker start] function,
+Singularity will be kept up to date during actor restarts.
+
+Singularity is designed to register singleton actors, in otherwords, a fixed
+number of actors, each of which may have a different message type.  If you are
+looking to manage many actors of the same message type, [chip] is a better
+solution.
+
+## Inspriation & Alternatives
+
+Erlang has a built in registry, but it is not type safe, which makes it
+difficult to use from Gleam.  The Erlang registry is also shared by all
+processes in the BEAM VM, which can make unit tests brittle.
+
+Gleam alternatives:
+
+- [chip]
+
+## Operation
+
+Singularity is itself an actor, so you must start it and keep a reference to
+it anywhere you wish to register or retrieve other actors.
+
+```gleam
+let assert Ok(registry) = singularity.start()
+```
+
+Type safety is ensured by utilizing a wrapper type that can hold any of the
+registered actors, for example:
+
+```gleam
+type Actor {
+    LightSwitch(Subject(switch.Message))
+    LightBulbA(Subject(bulb.Message))
+    LightBulbB(Subject(bulb.Message))
+}
+```
+
+When storing or retrieving an actor, the relevant contstructor for the wrapper
+type is used as a key:
+
+```gleam
+// Registration.
+let assert Ok(bulb_a) = bulb.start()
+singularity.register(with: registry, key: LightBulbA, subject: bulb_a)
+
+// Retrieval.
+let assert BulbA(bulb_a) =
+  singularity.require(from: registry, key: LightBulbA, timeout_ms: 1000)
+```
+
 When an actor's process exits, it will be removed from the registry
 automatically.  Fetching an actor using the [require](#require) function
 will block until that actor has been registered.  These two properties
 allow OTP supervisors to start your actors only when their dependencies
 are ready.
+
+When using Singularity in a request oriented service (i.e. a web API), you will
+typically want to store a reference to singularity directly in your request
+context custom type.  This allows your request handler functions to fetch the
+dependencies they need during a request.
+
+For scenarios with high request volumes, or a large number of dependencies,
+you may prefer to have a supervisor construct your context with all dependencies
+in place.  This will typically require your context, top-level handler, and
+entire HTTP server stack (i.e. mist + wisp), to be created by a supervisor.
 
 ## Usage
 
@@ -32,7 +100,7 @@ type MsgA
 
 type MsgB
 
-type Actors {
+type Actor {
   ActorA(Subject(MsgA))
   ActorB(Subject(MsgB))
 }
@@ -46,7 +114,7 @@ pub fn main() {
   let assert Ok(actor_b) =
     actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
 
-  // Register the actors specifying the wrapper (`Actors`) variant.
+  // Register the actors specifying the wrapper (`Actor`) variant.
   // Note that the `subject` argument is not wrapped in the Actors
   // type here.
   singularity.register(with: registry, key: ActorA, subject: actor_a)
@@ -90,7 +158,7 @@ pub fn main() {
       |> result.map(singularity.register(registry, Inner, subject: _))
     })
 
-  let clock_child =
+  let outer_child =
     supervisor.worker(fn(_state) {
       // Outer depends on Inner, fetch it.
       let assert Inner(inner) =
@@ -111,7 +179,7 @@ pub fn main() {
         init: fn(children) {
           children
           |> supervisor.add(inner_child)
-          |> supervisor.add(clock_child)
+          |> supervisor.add(outer_child)
         },
       ),
     )
@@ -123,6 +191,9 @@ pub fn main() {
 }
 ```
 
+See the [examples](https://github.com/jhillyerd/singularity/tree/main/examples)
+directory for more complete examples.
+
 Further documentation can be found at <https://hexdocs.pm/singularity>.
 
 ## Development
@@ -131,3 +202,8 @@ Further documentation can be found at <https://hexdocs.pm/singularity>.
 gleam test  # Run the tests
 gleam shell # Run an Erlang shell
 ```
+
+
+[chip]:            https://hexdocs.pm/chip/
+[Subject]:         https://hexdocs.pm/gleam_erlang/gleam/erlang/process.html#Subject
+[worker start]:    https://hexdocs.pm/gleam_otp/gleam/otp/supervisor.html#worker 
