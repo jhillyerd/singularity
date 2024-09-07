@@ -15,12 +15,12 @@ Subject will yield no response.
 By registering your actors within the supervisor [worker start] function,
 Singularity will be kept up to date during actor restarts.
 
-Singularity is designed to register singleton actors, in otherwords, a fixed
+Singularity is designed to register singleton actors, in other words, a fixed
 number of actors, each of which may have a different message type.  If you are
 looking to manage many actors of the same message type, [chip] is a better
 solution.
 
-## Inspriation & Alternatives
+## Inspiration & Alternatives
 
 Erlang has a built in registry, but it is not type safe, which makes it
 difficult to use from Gleam.  The Erlang registry is also shared by all
@@ -50,7 +50,7 @@ type Actor {
 }
 ```
 
-When storing or retrieving an actor, the relevant contstructor for the wrapper
+When storing or retrieving an actor, the relevant constructor for the wrapper
 type is used as a key:
 
 ```gleam
