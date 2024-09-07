@@ -303,12 +303,5 @@ fn get_act_variant_name(wrapped: wrap) -> String {
 
 /// Extracts the name of this variant from the constructor.
 ///
-fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) {
-  // Use a fake Subject to extract the variant name from the constructor.
-  // Coerce safety: no messages will be sent to the temporary Subject.
-  #(Nil, Nil)
-  |> dynamic.from
-  |> dynamic.unsafe_coerce
-  |> varfn
-  |> get_act_variant_name
-}
+@external(erlang, "singularity_ffi", "cons_variant_name")
+fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) -> String
