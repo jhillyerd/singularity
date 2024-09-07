@@ -1,5 +1,6 @@
 //// Count is a very simple actor that responds with an ever incrementing
 //// integer.
+
 import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
 
