@@ -68,10 +68,11 @@ pub fn main() {
 
   let handler = fn(req) { handle_request(req, registry) }
 
-  handler
-  |> mist.new
-  |> mist.port(3000)
-  |> mist.start_http
+  let assert Ok(_) =
+    handler
+    |> mist.new
+    |> mist.port(3000)
+    |> mist.start_http
 
   // Increment counter_b to make things interesting.
   let assert CounterB(counter_b) =
