@@ -5,66 +5,51 @@ import gleam/erlang/process.{type Subject}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
 import gleam/io
-import gleam/otp/supervisor
+import gleam/otp/actor
+import gleam/otp/static_supervisor as supervisor
 import gleam/result
 import mist
 import singularity
-
-pub type Actor {
-  CounterA(Subject(counter.Message))
-  CounterB(Subject(counter.Message))
-  Adder(Subject(adder.Message))
-}
 
 pub fn main() {
   let assert Ok(registry) = singularity.start()
 
   // Create worker init functions.
   let counter_a_child =
-    supervisor.worker(fn(_state) {
+    supervisor.worker_child("counter_a", fn() {
       // Counter has no dependencies, start and register it.
-      io.println("## Starting counter_a")
+      io.println("## Starting counter_a at 1")
       counter.start(1)
-      |> result.map(singularity.register(registry, CounterA, subject: _))
+      |> result.map(singularity.register(registry, adder.CounterA, subject: _))
+      |> actor.to_erlang_start_result
     })
 
   let counter_b_child =
-    supervisor.worker(fn(_state) {
-      io.println("## Starting counter_b")
+    supervisor.worker_child("counter_b", fn() {
+      io.println("## Starting counter_b at 10")
       // Counter has no dependencies, start and register it.
       counter.start(10)
-      |> result.map(singularity.register(registry, CounterB, subject: _))
+      |> result.map(singularity.register(registry, adder.CounterB, subject: _))
+      |> actor.to_erlang_start_result
     })
 
   let adder_child =
-    supervisor.worker(fn(_state) {
+    supervisor.worker_child("adder", fn() {
       io.println("## Starting adder")
-      // Adder depends on two counters, fetch them.
-      let assert CounterA(counter_a) =
-        singularity.require(registry, CounterA, timeout_ms: 1000)
-      let assert CounterB(counter_b) =
-        singularity.require(registry, CounterB, timeout_ms: 1000)
 
-      // Start and register Adder.
-      adder.start(counter_a, counter_b)
-      |> result.map(singularity.register(registry, Adder, subject: _))
+      // Start and register Adder, passing in the registry.
+      adder.start(registry)
+      |> result.map(singularity.register(registry, adder.Adder, subject: _))
+      |> actor.to_erlang_start_result
     })
 
   // Start the supervisor.
   let assert Ok(_) =
-    supervisor.start_spec(
-      supervisor.Spec(
-        argument: Nil,
-        frequency_period: 1,
-        max_frequency: 5,
-        init: fn(children) {
-          children
-          |> supervisor.add(counter_a_child)
-          |> supervisor.add(counter_b_child)
-          |> supervisor.add(adder_child)
-        },
-      ),
-    )
+    supervisor.new(supervisor.OneForOne)
+    |> supervisor.add(counter_a_child)
+    |> supervisor.add(counter_b_child)
+    |> supervisor.add(adder_child)
+    |> supervisor.start_link
 
   let handler = fn(req) { handle_request(req, registry) }
 
@@ -74,15 +59,16 @@ pub fn main() {
     |> mist.port(3000)
     |> mist.start_http
 
-  // Increment counter_b to make things interesting.
-  let assert CounterB(counter_b) =
-    singularity.require(registry, CounterB, timeout_ms: 1000)
+  // Increment both counters to make things interesting.
+  let assert adder.CounterA(counter_a) =
+    singularity.require(registry, adder.CounterA, timeout_ms: 1000)
+  let assert adder.CounterB(counter_b) =
+    singularity.require(registry, adder.CounterB, timeout_ms: 1000)
+  counter.next(counter_a)
   counter.next(counter_b)
 
-  // Kill counter_a after a delay.
-  process.sleep(2000)
-  let assert CounterA(counter_a) =
-    singularity.require(registry, CounterA, timeout_ms: 1000)
+  // Kill counter_a after a delay.  This will restart its count at 1.
+  process.sleep(8000)
   counter_a
   |> process.subject_owner
   |> process.kill
@@ -92,11 +78,11 @@ pub fn main() {
 
 fn handle_request(
   _req: Request(mist.Connection),
-  registry: Subject(singularity.Message(Actor)),
+  registry: Subject(singularity.Message(adder.Actor)),
 ) -> Response(mist.ResponseData) {
   // Fetch the adder actor.
-  let assert Adder(adder) =
-    singularity.require(registry, Adder, timeout_ms: 1000)
+  let assert adder.Adder(adder) =
+    singularity.require(registry, adder.Adder, timeout_ms: 1000)
 
   let body =
     adder.next(adder)
