@@ -39,12 +39,15 @@
 //// The example above is for illustrative purposes only; it will not compile.
 //// Please see the README and tests for concrete examples.
 
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/dynamic
+import gleam/erlang
 import gleam/erlang/atom
 import gleam/erlang/process.{
   type Pid, type ProcessMonitor, type Selector, type Subject,
 }
+import gleam/int
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
@@ -61,6 +64,8 @@ type State(wrap) {
     selector: Selector(Message(wrap)),
     /// Registered actors.
     actors: Dict(String, Actor(wrap)),
+    /// Times used for restart delays: (start_time, prev_delay).
+    times: Dict(String, #(Int, Int)),
   )
 }
 
@@ -81,7 +86,13 @@ pub fn start() -> Result(Subject(Message(wrap)), actor.StartError) {
       let selector =
         process.new_selector()
         |> process.selecting(self, fn(msg) { msg })
-      let state = State(self: self, selector: selector, actors: dict.new())
+      let state =
+        State(
+          self: self,
+          selector: selector,
+          actors: dict.new(),
+          times: dict.new(),
+        )
 
       actor.Ready(state, selector)
     },
@@ -143,12 +154,66 @@ pub fn require(
   actor.call(actor, Require(_, key, timeout), timeout)
 }
 
+/// A DelayFunc accepts two parameters:
+///
+/// - The uptime of the previous incarnation of this actor, in milliseconds.
+/// - The previous delay in milliseconds, starting with 0.
+pub type DelayFunc =
+  fn(Int, Int) -> Int
+
+/// Ignores inputs, always delays the same amount of time.
+pub fn always_delay(ms delay: Int) -> DelayFunc {
+  fn(_prev_up_ms: Int, _prev_delay_ms: Int) -> Int { delay }
+}
+
+/// Starts at initial_ms, doubling with each subsequent call.  If max_ms is
+/// provided, delay will not exceed that value.  If the previous incarnation
+/// lived for at least good_ms, the delay will be reset to initial_ms.
+pub fn exponential_delay(
+  good_ms good: Int,
+  initial_ms initial: Int,
+  max_ms max: Option(Int),
+) -> DelayFunc {
+  fn(prev_up_ms: Int, prev_delay_ms: Int) -> Int {
+    use <- bool.guard(
+      when: prev_delay_ms == 0 || prev_up_ms >= good,
+      return: initial,
+    )
+
+    // Double previous delay and clamp to max if provided.
+    let delay = prev_delay_ms * 2
+    case max {
+      Some(max) -> int.min(max, delay)
+      None -> delay
+    }
+  }
+}
+
+/// Tracks and delays restarts for the actor `key` using the provided
+/// `DelayFunc`.
+///
+/// See `always_delay` and `exponential_delay` for built-in delay functions,
+/// or write your own for custom timings.
+pub fn restart_delay(
+  from actor: Subject(Message(wrap)),
+  key variant: fn(Subject(msg)) -> wrap,
+  with func: fn(Int, Int) -> Int,
+) {
+  let key = cons_variant_name(variant)
+  let delay = actor.call(actor, Delay(_, key, func), 10)
+  case delay {
+    0 -> Nil
+    ms -> process.sleep(ms)
+  }
+}
+
 /// Singularity's message/Subject type.
 ///
 pub opaque type Message(wrap) {
   TryGet(reply_with: Subject(Result(wrap, Nil)), key: String)
   Require(reply_with: Subject(wrap), key: String, timeout: Int)
   Register(key: String, wrapped: wrap, pid: Pid)
+  Delay(reply_with: Subject(Int), key: String, func: DelayFunc)
   ActorExit(key: String, pdown: process.ProcessDown)
   Shutdown
 }
@@ -175,6 +240,26 @@ fn loop(
       state
       |> actor.continue()
       |> actor.with_selector(state.selector)
+    }
+
+    Delay(reply_with, key, delay_fn) -> {
+      let now = erlang.system_time(erlang.Millisecond)
+      let delay = case dict.get(state.times, key) {
+        Error(_) -> {
+          // First start, no delay required.
+          0
+        }
+        Ok(#(start_time, prev_delay)) -> {
+          // A restart, calculate delay using provided fn.
+          let uptime = now - start_time - prev_delay |> int.max(0)
+          delay_fn(uptime, prev_delay)
+        }
+      }
+
+      actor.send(reply_with, delay)
+      let value = #(now, delay)
+      let times = dict.insert(state.times, key, value)
+      State(..state, times:) |> actor.continue
     }
 
     ActorExit(key, pdown) -> {
