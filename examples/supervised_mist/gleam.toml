@@ -7,7 +7,7 @@ gleam_stdlib = "~> 0.34 or ~> 1.0"
 gleam_otp = "~> 0.10"
 gleam_erlang = "~> 0.25"
 gleam_http = "~> 3.6"
-mist = ">= 3.0.0 and < 4.0.0"
+mist = ">= 4.0.0 and < 5.0.0"
 singularity = { path = "../.." }
 
 [dev-dependencies]

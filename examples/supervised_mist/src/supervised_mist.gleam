@@ -1,6 +1,6 @@
+import gleam/bytes_tree
 import adder
 import counter
-import gleam/bytes_builder
 import gleam/erlang/process.{type Subject}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
@@ -86,8 +86,8 @@ fn handle_request(
 
   let body =
     adder.next(adder)
-    |> bytes_builder.from_string
-    |> bytes_builder.append_string("\n\nClick reload!")
+    |> bytes_tree.from_string
+    |> bytes_tree.append_string("\n\nClick reload!")
     |> mist.Bytes
 
   response.new(200)
