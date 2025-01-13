@@ -56,11 +56,11 @@ type is used as a key:
 ```gleam
 // Registration.
 let assert Ok(bulb_a) = bulb.start()
-singularity.register(with: registry, key: LightBulbA, subject: bulb_a)
+singularity.register(in: registry, key: LightBulbA, subject: bulb_a)
 
 // Retrieval.
 let assert BulbA(bulb_a) =
-  singularity.require(from: registry, key: LightBulbA, timeout_ms: 1000)
+  singularity.require(in: registry, key: LightBulbA, timeout_ms: 1000)
 ```
 
 When an actor's process exits, it will be removed from the registry
@@ -78,6 +78,42 @@ For scenarios with high request volumes, or a large number of dependencies,
 you may prefer to have a supervisor construct your context with all dependencies
 in place.  This will typically require your context, top-level handler, and
 entire HTTP server stack (i.e. mist + wisp), to be created by a supervisor.
+
+
+## Restart Delays
+
+Optionally, Singularity can delay the restart of supervised actors using a
+fixed duration, an exponential back-off, or a user supplied algorithm.
+
+Example use of exponential back-off with `static_supervisor`:
+
+```gleam
+supervisor.new(supervisor.OneForOne)
+|> supervisor.restart_tolerance(intensity: 5, period: 60)
+|> supervisor.add(
+  supervisor.worker_child("bulb_a", fn() {
+    // Will delay startup after the first failure.
+    singularity.restart_delay(
+      in: registry,
+      key: LightBulbA,
+      with: singularity.exponential_delay(
+        good_ms: 10_000,   // Consider the actor stable after 10s.
+        initial_ms: 1_000, // Delay first restart by 1s.
+        max_ms: None,      // Do not limit the delay duration.
+      ),
+    )
+
+    bulb.start()
+    |> result.map(singularity.register(in: registry, key: HA, subject: _))
+    |> actor.to_erlang_start_result
+  }),
+)
+|> supervisor.start_link
+```
+
+Actors do not need to be registered with Singularity to use the restart delay
+feature.
+
 
 ## Usage
 
