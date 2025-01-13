@@ -153,14 +153,14 @@ pub fn main() {
   // Register the actors specifying the wrapper (`Actor`) variant.
   // Note that the `subject` argument is not wrapped in the Actors
   // type here.
-  singularity.register(with: registry, key: ActorA, subject: actor_a)
-  singularity.register(with: registry, key: ActorB, subject: actor_b)
+  singularity.register(in: registry, key: ActorA, subject: actor_a)
+  singularity.register(in: registry, key: ActorB, subject: actor_b)
 
   // Retrieve and verify registered actors.  These are wrapped.
   let assert ActorA(got_a) =
-    singularity.require(from: registry, key: ActorA, timeout_ms: 1000)
+    singularity.require(in: registry, key: ActorA, timeout_ms: 1000)
   let assert ActorB(got_b) =
-    singularity.require(from: registry, key: ActorB, timeout_ms: 1000)
+    singularity.require(in: registry, key: ActorB, timeout_ms: 1000)
 
   Nil
 }
