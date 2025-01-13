@@ -114,7 +114,7 @@ pub fn stop(actor: Subject(Message(wrap))) {
 ///
 /// Returns the subject unchanged, for ease of use in pipelines.
 pub fn register(
-  with actor: Subject(Message(wrap)),
+  in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   subject subj: Subject(msg),
 ) -> Subject(msg) {
@@ -130,7 +130,7 @@ pub fn register(
 /// the actor is not present in the registry, returns `None`.
 ///
 pub fn try_get(
-  from actor: Subject(Message(wrap)),
+  in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
 ) -> Result(wrap, Nil) {
   let key = cons_variant_name(variant)
@@ -146,7 +146,7 @@ pub fn try_get(
 /// depend on them.
 ///
 pub fn require(
-  from actor: Subject(Message(wrap)),
+  in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   timeout_ms timeout: Int,
 ) -> wrap {
@@ -195,7 +195,7 @@ pub fn exponential_delay(
 /// See `always_delay` and `exponential_delay` for built-in delay functions,
 /// or write your own for custom timings.
 pub fn restart_delay(
-  from actor: Subject(Message(wrap)),
+  in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   with func: fn(Int, Int) -> Int,
 ) {
