@@ -41,9 +41,10 @@
 
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/dynamic
+import gleam/dynamic.{type Dynamic}
+import gleam/dynamic/decode.{type Decoder}
 import gleam/erlang
-import gleam/erlang/atom
+import gleam/erlang/atom.{type Atom}
 import gleam/erlang/process.{
   type Pid, type ProcessMonitor, type Selector, type Subject,
 }
@@ -381,9 +382,23 @@ fn get_act_variant_name(wrapped: wrap) -> String {
   let assert Ok(atom) =
     wrapped
     |> dynamic.from
-    |> dynamic.element(0, atom.from_dynamic)
+    |> decode.run(atom_decoder())
 
   atom.to_string(atom)
+}
+
+fn atom_decoder() -> Decoder(Atom) {
+  use atom <- decode.field(0, decode.new_primitive_decoder("Atom", decode_atom))
+
+  decode.success(atom)
+}
+
+fn decode_atom(data: Dynamic) -> Result(Atom, Atom) {
+  let assert Ok(error_atom) = atom.from_string("error")
+
+  data
+  |> atom.from_dynamic
+  |> result.replace_error(error_atom)
 }
 
 /// Extracts the name of this variant from the constructor.
