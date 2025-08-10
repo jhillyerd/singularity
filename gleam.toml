@@ -1,13 +1,13 @@
 name = "singularity"
-version = "1.1.0"
+version = "1.2.0"
 
 description = "Singleton OTP actor registry for Gleam"
 licences = ["Apache-2.0"]
 repository = { type = "github", user = "jhillyerd", repo = "singularity" }
-gleam = ">= 1.4.0"
+gleam = ">= 1.11.0"
 
 [dependencies]
-gleam_stdlib = ">= 0.34.0 and < 0.57.0"
+gleam_stdlib = ">= 0.58.0 and < 0.61.0"
 gleam_erlang = "~> 0.25"
 gleam_otp = "~> 0.10"
 

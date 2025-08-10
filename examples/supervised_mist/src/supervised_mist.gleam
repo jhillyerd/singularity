@@ -1,6 +1,6 @@
-import gleam/bytes_tree
 import adder
 import counter
+import gleam/bytes_tree
 import gleam/erlang/process.{type Subject}
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
