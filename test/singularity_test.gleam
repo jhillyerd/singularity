@@ -1,4 +1,3 @@
-import gleam/erlang
 import gleam/erlang/process.{type Subject}
 import gleam/int
 import gleam/option.{None, Some}
@@ -27,17 +26,15 @@ type Actors {
 pub fn example_test() {
   let assert Ok(registry) = singularity.start()
 
-  // Create a couple dummy actors, having unique message types.
-  let assert Ok(actor_a) =
-    actor.start(Nil, fn(_msg: MsgA, state) { actor.continue(state) })
-  let assert Ok(actor_b) =
-    actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
+  // Create a couple dummy actors.
+  let assert Ok(actor.Started(_, actor_a)) = actor.start(actor.new(Nil))
+  let assert Ok(actor.Started(_, actor_b)) = actor.start(actor.new(Nil))
 
   // Register the actors specifying the wrapper (`Actors`) variant.
   // Note that the `subject` argument is not wrapped in the Actors
   // type here.
-  singularity.register(in: registry, key: ActorA, subject: actor_a)
-  singularity.register(in: registry, key: ActorB, subject: actor_b)
+  let _ = singularity.register(in: registry, key: ActorA, subject: actor_a)
+  let _ = singularity.register(in: registry, key: ActorB, subject: actor_b)
 
   // Retrieve and verify registered actors.  These are wrapped.
   let assert ActorA(got_a) =
@@ -63,8 +60,11 @@ pub fn try_get_test() {
 
   // Register an actor.
   let assert Ok(actor_a) =
-    actor.start(Nil, fn(_msg: MsgA, state) { actor.continue(state) })
-    |> result.map(singularity.register(reg, ActorA, _))
+    actor.start(actor.new(Nil))
+    |> result.replace_error(Nil)
+    |> result.try(fn(started) {
+      singularity.register(reg, ActorA, started.data)
+    })
 
   // Retrieve and verify registered actors.
   let assert Ok(ActorA(got_a)) = singularity.try_get(reg, ActorA)
@@ -189,9 +189,9 @@ pub fn exponential_good_doesnt_include_sleep_time_test() {
 }
 
 fn time_fn(func) {
-  let begin = erlang.system_time(erlang.Millisecond)
+  let begin = system_time(Millisecond)
   func()
-  let end = erlang.system_time(erlang.Millisecond)
+  let end = system_time(Millisecond)
 
   end - begin
 }
@@ -211,4 +211,17 @@ fn should_approx(got: Int, want want: Int, within within: Int) {
     }
     False -> Nil
   }
+}
+
+/// Returns the current OS system time.
+///
+/// <https://erlang.org/doc/apps/erts/time_correction.html#OS_System_Time>
+@external(erlang, "os", "system_time")
+pub fn system_time(a: TimeUnit) -> Int
+
+pub type TimeUnit {
+  Second
+  Millisecond
+  Microsecond
+  Nanosecond
 }

@@ -41,13 +41,10 @@
 
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/dynamic.{type Dynamic}
+import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
-import gleam/erlang
 import gleam/erlang/atom.{type Atom}
-import gleam/erlang/process.{
-  type Pid, type ProcessMonitor, type Selector, type Subject,
-}
+import gleam/erlang/process.{type Monitor, type Pid, type Selector, type Subject}
 import gleam/int
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
@@ -73,7 +70,7 @@ type State(wrap) {
 /// An individual registered actor.
 ///
 type Actor(wrap) {
-  Actor(actor: wrap, pid: Pid, monitor: ProcessMonitor)
+  Actor(actor: wrap, pid: Pid, monitor: Monitor)
 }
 
 /// Starts the registry.
@@ -81,25 +78,19 @@ type Actor(wrap) {
 /// Note: Gleam actors are linked to the parent process by default.
 ///
 pub fn start() -> Result(Subject(Message(wrap)), actor.StartError) {
-  actor.start_spec(actor.Spec(
-    init: fn() {
-      let self = process.new_subject()
-      let selector =
-        process.new_selector()
-        |> process.selecting(self, fn(msg) { msg })
-      let state =
-        State(
-          self: self,
-          selector: selector,
-          actors: dict.new(),
-          times: dict.new(),
-        )
-
-      actor.Ready(state, selector)
-    },
-    loop: loop,
-    init_timeout: 100,
-  ))
+  actor.new_with_initialiser(100, fn(subj) {
+    let selector =
+      process.new_selector()
+      |> process.select(subj)
+    State(self: subj, selector:, actors: dict.new(), times: dict.new())
+    |> actor.initialised
+    |> actor.selecting(selector)
+    |> actor.returning(subj)
+    |> Ok
+  })
+  |> actor.on_message(handle_message)
+  |> actor.start
+  |> result.map(fn(started) { started.data })
 }
 
 /// Shuts down the registry.  Does not affect registered actors.
@@ -118,13 +109,14 @@ pub fn register(
   in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   subject subj: Subject(msg),
-) -> Subject(msg) {
-  let pid = process.subject_owner(subj)
+) -> Result(Subject(msg), Nil) {
+  use pid <- result.try(process.subject_owner(subj))
+
   let wrapped = variant(subj)
   let key = get_act_variant_name(wrapped)
 
   actor.send(actor, Register(key, wrapped, pid))
-  subj
+  Ok(subj)
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
@@ -135,7 +127,7 @@ pub fn try_get(
   key variant: fn(Subject(msg)) -> wrap,
 ) -> Result(wrap, Nil) {
   let key = cons_variant_name(variant)
-  actor.call(actor, TryGet(_, key), 10)
+  actor.call(actor, 10, TryGet(_, key))
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
@@ -152,7 +144,7 @@ pub fn require(
   timeout_ms timeout: Int,
 ) -> wrap {
   let key = cons_variant_name(variant)
-  actor.call(actor, Require(_, key, timeout), timeout)
+  actor.call(actor, timeout, Require(_, key, timeout))
 }
 
 /// A DelayFunc accepts two parameters:
@@ -201,7 +193,7 @@ pub fn restart_delay(
   with func: fn(Int, Int) -> Int,
 ) {
   let key = cons_variant_name(variant)
-  let delay = actor.call(actor, Delay(_, key, func), 10)
+  let delay = actor.call(actor, 10, Delay(_, key, func))
   case delay {
     0 -> Nil
     ms -> process.sleep(ms)
@@ -215,14 +207,14 @@ pub opaque type Message(wrap) {
   Require(reply_with: Subject(wrap), key: String, timeout: Int)
   Register(key: String, wrapped: wrap, pid: Pid)
   Delay(reply_with: Subject(Int), key: String, func: DelayFunc)
-  ActorExit(key: String, pdown: process.ProcessDown)
+  ActorExit(key: String, pdown: process.Down)
   Shutdown
 }
 
-fn loop(
-  message: Message(wrap),
+fn handle_message(
   state: State(wrap),
-) -> actor.Next(Message(wrap), State(wrap)) {
+  message: Message(wrap),
+) -> actor.Next(State(wrap), Message(wrap)) {
   case message {
     TryGet(reply_with, key) -> {
       state.actors
@@ -244,7 +236,7 @@ fn loop(
     }
 
     Delay(reply_with, key, delay_fn) -> {
-      let now = erlang.system_time(erlang.Millisecond)
+      let now = system_time(Millisecond)
       let delay = case dict.get(state.times, key) {
         Error(_) -> {
           // First start, no delay required.
@@ -264,15 +256,23 @@ fn loop(
     }
 
     ActorExit(key, pdown) -> {
-      let state = remove(state, key, Some(pdown.pid))
+      case pdown {
+        process.ProcessDown(_, pid, _) -> {
+          // Remove the actor from the registry.
+          let state = remove(state, key, Some(pid))
 
-      state
-      |> actor.continue()
-      |> actor.with_selector(state.selector)
+          state
+          |> actor.continue()
+          |> actor.with_selector(state.selector)
+        }
+        process.PortDown(_, _, _) -> {
+          actor.continue(state)
+        }
+      }
     }
 
     Shutdown -> {
-      actor.Stop(process.Normal)
+      actor.stop()
     }
   }
 }
@@ -287,10 +287,12 @@ fn handle_register(
   let state = remove(state, key, None)
 
   // Monitor process for exits.
-  let monitor = process.monitor_process(pid)
+  let monitor = process.monitor(pid)
+
+  // TODO Look into `select_monitors` instead
   let selector =
     state.selector
-    |> process.selecting_process_down(monitor, ActorExit(key: key, pdown: _))
+    |> process.select_specific_monitor(monitor, ActorExit(key: key, pdown: _))
 
   // Insert into registry.
   let actor = Actor(actor: wrapped, pid: pid, monitor: monitor)
@@ -334,10 +336,10 @@ fn build_selector(
 ) -> Selector(Message(wrap)) {
   let base_selector =
     process.new_selector()
-    |> process.selecting(self, fn(msg) { msg })
+    |> process.select(self)
 
   dict.fold(over: actors, from: base_selector, with: fn(selector, key, actor) {
-    process.selecting_process_down(selector, actor.monitor, ActorExit(
+    process.select_specific_monitor(selector, actor.monitor, ActorExit(
       key: key,
       pdown: _,
     ))
@@ -349,7 +351,7 @@ fn get_with_retry(
   key: String,
   reply_with: Subject(wrap),
   millis timeout: Int,
-) -> actor.Next(Message(wrap), State(wrap)) {
+) -> actor.Next(State(wrap), a) {
   case dict.get(state.actors, key) {
     Ok(actor) -> {
       // Actor found, respond to caller.
@@ -388,20 +390,25 @@ fn get_act_variant_name(wrapped: wrap) -> String {
 }
 
 fn atom_decoder() -> Decoder(Atom) {
-  use atom <- decode.field(0, decode.new_primitive_decoder("Atom", decode_atom))
+  use atom <- decode.field(0, atom.decoder())
 
   decode.success(atom)
-}
-
-fn decode_atom(data: Dynamic) -> Result(Atom, Atom) {
-  let assert Ok(error_atom) = atom.from_string("error")
-
-  data
-  |> atom.from_dynamic
-  |> result.replace_error(error_atom)
 }
 
 /// Extracts the name of this variant from the constructor.
 ///
 @external(erlang, "singularity_ffi", "cons_variant_name")
 fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) -> String
+
+/// Returns the current OS system time.
+///
+/// <https://erlang.org/doc/apps/erts/time_correction.html#OS_System_Time>
+@external(erlang, "os", "system_time")
+pub fn system_time(a: TimeUnit) -> Int
+
+pub type TimeUnit {
+  Second
+  Millisecond
+  Microsecond
+  Nanosecond
+}
