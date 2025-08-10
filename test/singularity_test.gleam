@@ -202,12 +202,12 @@ fn should_approx(got: Int, want want: Int, within within: Int) {
   case diff > within {
     True -> {
       panic as {
-        string.inspect(got)
-        <> " was not within "
-        <> string.inspect(within)
-        <> " of "
-        <> string.inspect(want)
-      }
+          string.inspect(got)
+          <> " was not within "
+          <> string.inspect(within)
+          <> " of "
+          <> string.inspect(want)
+        }
     }
     False -> Nil
   }
