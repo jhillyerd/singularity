@@ -1,9 +1,11 @@
 import gleam/erlang/process.{type Subject}
-import gleam/int
 import gleam/option.{None, Some}
+import gleam/order
 import gleam/otp/actor
 import gleam/result
 import gleam/string
+import gleam/time/duration.{type Duration}
+import gleam/time/timestamp
 import gleeunit
 import gleeunit/should
 import singularity
@@ -86,9 +88,9 @@ pub fn fixed_delay_test() {
   }
 
   // Measure three runs of restart delay, first call should not delay.
-  time_fn(restart_func) |> should_approx(want: 0, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 250, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 250, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 0, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 250, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 250, within: tolerance_ms)
 }
 
 pub fn exponential_delay_unlimited_test() {
@@ -107,10 +109,10 @@ pub fn exponential_delay_unlimited_test() {
   }
 
   // Measure runs of increasing restart delay, first call should not delay.
-  time_fn(restart_func) |> should_approx(want: 0, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 50, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 200, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 0, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 50, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 200, within: tolerance_ms)
 }
 
 pub fn exponential_delay_limited_test() {
@@ -130,10 +132,10 @@ pub fn exponential_delay_limited_test() {
 
   // Measure runs of increasing restart delay, first call should not delay.
   // Must cap at 100ms.
-  time_fn(restart_func) |> should_approx(want: 0, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 50, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 0, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 50, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
 }
 
 pub fn exponential_delay_resets_after_good_ms_test() {
@@ -153,12 +155,12 @@ pub fn exponential_delay_resets_after_good_ms_test() {
 
   // Measure runs of increasing restart delay, first call should not delay.
   // Should reset to initial_ms after sleep.
-  time_fn(restart_func) |> should_approx(want: 0, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 50, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 0, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 50, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
   process.sleep(600)
-  time_fn(restart_func) |> should_approx(want: 50, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 50, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
 }
 
 pub fn exponential_good_doesnt_include_sleep_time_test() {
@@ -178,50 +180,46 @@ pub fn exponential_good_doesnt_include_sleep_time_test() {
 
   // Measure runs of increasing restart delay, first call should not delay.
   // Should reset to initial_ms after sleep.
-  time_fn(restart_func) |> should_approx(want: 0, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 50, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 100, within: tolerance_ms)
-  time_fn(restart_func) |> should_approx(want: 200, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 0, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 50, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 100, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 200, within: tolerance_ms)
 
   // If the assertion below fails, then exponential_delay thought we had
   // good_ms of uptime, instead of a long restart delay.
-  time_fn(restart_func) |> should_approx(want: 400, within: tolerance_ms)
+  time_fn(restart_func) |> should_take(ms: 400, within: tolerance_ms)
 }
 
-fn time_fn(func) {
-  let begin = system_time(Millisecond)
+fn time_fn(func: fn() -> a) -> Duration {
+  let begin = timestamp.system_time()
   func()
-  let end = system_time(Millisecond)
-
-  end - begin
+  timestamp.difference(begin, timestamp.system_time())
 }
 
-fn should_approx(got: Int, want want: Int, within within: Int) {
-  let diff = int.absolute_value(got - want)
+fn should_take(got: Duration, ms want: Int, within within: Int) {
+  let want = duration.milliseconds(want)
+  let within = duration.milliseconds(within)
+  let diff = case duration.compare(got, want) {
+    order.Lt -> duration.difference(got, want)
+    order.Eq -> duration.nanoseconds(0)
+    order.Gt -> duration.difference(want, got)
+  }
 
-  case diff > within {
-    True -> {
+  let dur_fmt = fn(d: Duration) -> String {
+    duration.approximate(d) |> string.inspect
+  }
+
+  case duration.compare(diff, within) {
+    order.Gt -> {
       panic as {
-          string.inspect(got)
-          <> " was not within "
-          <> string.inspect(within)
+          "Took "
+          <> dur_fmt(got)
+          <> ", which was not within "
+          <> dur_fmt(within)
           <> " of "
-          <> string.inspect(want)
+          <> dur_fmt(want)
         }
     }
-    False -> Nil
+    _ -> Nil
   }
-}
-
-/// Returns the current OS system time.
-///
-/// <https://erlang.org/doc/apps/erts/time_correction.html#OS_System_Time>
-@external(erlang, "os", "system_time")
-pub fn system_time(a: TimeUnit) -> Int
-
-pub type TimeUnit {
-  Second
-  Millisecond
-  Microsecond
-  Nanosecond
 }
