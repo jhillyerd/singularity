@@ -46,6 +46,8 @@ import gleam/int
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/result
+import gleam/time/duration.{type Duration}
+import gleam/time/timestamp.{type Timestamp}
 
 const require_retry_delay_ms = 100
 
@@ -60,7 +62,7 @@ type State(wrap) {
     /// Registered actors.
     actors: Dict(String, Actor(wrap)),
     /// Times used for restart delays: (start_time, prev_delay).
-    times: Dict(String, #(Int, Int)),
+    times: Dict(String, #(Timestamp, Duration)),
   )
 }
 
@@ -233,22 +235,29 @@ fn handle_message(
     }
 
     Delay(reply_with, key, delay_fn) -> {
-      let now = system_time(Millisecond)
+      let now = timestamp.system_time()
       let delay = case dict.get(state.times, key) {
         Error(_) -> {
           // First start, no delay required.
           0
         }
         Ok(#(start_time, prev_delay)) -> {
-          // A restart, calculate delay using provided fn.
-          let uptime = now - start_time - prev_delay |> int.max(0)
-          delay_fn(uptime, prev_delay)
+          // A restart, calculate process uptime excluding the previous delay time.
+          let uptime =
+            duration.difference(
+              prev_delay,
+              timestamp.difference(start_time, now),
+            )
+
+          // Use provided function to determine restart delay after clamping uptime to 0.
+          let up_ms = to_milliseconds(uptime) |> int.max(0)
+          delay_fn(up_ms, to_milliseconds(prev_delay))
         }
       }
 
       actor.send(reply_with, delay)
-      let value = #(now, delay)
-      let times = dict.insert(state.times, key, value)
+      let times_value = #(now, duration.milliseconds(delay))
+      let times = dict.insert(state.times, key, times_value)
       State(..state, times:) |> actor.continue
     }
 
@@ -272,6 +281,11 @@ fn handle_message(
       actor.stop()
     }
   }
+}
+
+fn to_milliseconds(d: Duration) -> Int {
+  let #(seconds, nanos) = duration.to_seconds_and_nanoseconds(d)
+  { seconds * 1000 } + { nanos / 1_000_000 }
 }
 
 fn handle_register(
@@ -384,16 +398,3 @@ fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) -> String
 ///
 @external(erlang, "singularity_ffi", "get_act_variant_name")
 fn get_act_variant_name(wrapped: wrap) -> String
-
-/// Returns the current OS system time.
-///
-/// <https://erlang.org/doc/apps/erts/time_correction.html#OS_System_Time>
-@external(erlang, "os", "system_time")
-pub fn system_time(a: TimeUnit) -> Int
-
-pub type TimeUnit {
-  Second
-  Millisecond
-  Microsecond
-  Nanosecond
-}
