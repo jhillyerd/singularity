@@ -41,9 +41,6 @@
 
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/dynamic
-import gleam/dynamic/decode.{type Decoder}
-import gleam/erlang/atom.{type Atom}
 import gleam/erlang/process.{type Monitor, type Pid, type Selector, type Subject}
 import gleam/int
 import gleam/option.{type Option, None, Some}
@@ -378,27 +375,15 @@ fn get_with_retry(
   actor.continue(state)
 }
 
-/// Extracts the name of this variant from the caller's actor wrapper.
-///
-fn get_act_variant_name(wrapped: wrap) -> String {
-  let assert Ok(atom) =
-    wrapped
-    |> dynamic.from
-    |> decode.run(atom_decoder())
-
-  atom.to_string(atom)
-}
-
-fn atom_decoder() -> Decoder(Atom) {
-  use atom <- decode.field(0, atom.decoder())
-
-  decode.success(atom)
-}
-
 /// Extracts the name of this variant from the constructor.
 ///
 @external(erlang, "singularity_ffi", "cons_variant_name")
 fn cons_variant_name(varfn: fn(Subject(msg)) -> wrap) -> String
+
+/// Extracts the name of this variant from the caller's actor wrapper.
+///
+@external(erlang, "singularity_ffi", "get_act_variant_name")
+fn get_act_variant_name(wrapped: wrap) -> String
 
 /// Returns the current OS system time.
 ///
