@@ -2,7 +2,6 @@ import gleam/erlang/process.{type Subject}
 import gleam/option.{None, Some}
 import gleam/order
 import gleam/otp/actor
-import gleam/result
 import gleam/string
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp
@@ -60,20 +59,16 @@ pub fn try_get_test() {
   singularity.try_get(reg, ActorB)
   |> should.be_error()
 
-  // Register an actor.
+  // Register an actor via map_started.
   let assert Ok(actor_a) =
-    actor.start(actor.new(Nil))
-    |> result.replace_error(Nil)
-    |> result.try(fn(started) {
-      singularity.register(reg, ActorA, started.data)
-    })
+    actor.start(actor.new(Nil)) |> singularity.map_started(reg, ActorA)
 
   // Retrieve and verify registered actors.
   let assert Ok(ActorA(got_a)) = singularity.try_get(reg, ActorA)
   let assert Error(Nil) = singularity.try_get(reg, ActorB)
 
   got_a
-  |> should.equal(actor_a)
+  |> should.equal(actor_a.data)
 }
 
 pub fn fixed_delay_test() {

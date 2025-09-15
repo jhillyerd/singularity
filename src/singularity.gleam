@@ -108,14 +108,34 @@ pub fn register(
   in actor: Subject(Message(wrap)),
   key variant: fn(Subject(msg)) -> wrap,
   subject subj: Subject(msg),
-) -> Result(Subject(msg), Nil) {
-  use pid <- result.try(process.subject_owner(subj))
-
+) -> Result(Subject(msg), String) {
+  use pid <- result.try(
+    process.subject_owner(subj)
+    |> result.map_error(fn(_) { "Singularity failed to get subject owner" }),
+  )
   let wrapped = variant(subj)
   let key = get_act_variant_name(wrapped)
 
   actor.send(actor, Register(key, wrapped, pid))
   Ok(subj)
+}
+
+/// Registers an actor from an actor.Started result, see the `register`
+/// function for more information.
+///
+/// Returns the actor.Started result unchanged, for ease of use in pipelines.
+pub fn map_started(
+  started started: Result(actor.Started(Subject(msg)), actor.StartError),
+  in actor: Subject(Message(wrap)),
+  key variant: fn(Subject(msg)) -> wrap,
+) -> Result(actor.Started(Subject(msg)), actor.StartError) {
+  use started <- result.try(started)
+  let subj = started.data
+
+  case register(in: actor, key: variant, subject: subj) {
+    Ok(_) -> Ok(started)
+    Error(detail) -> Error(actor.InitFailed(detail))
+  }
 }
 
 /// Retrieves an actor, using the actors wrapper type constructor as a key.  If
