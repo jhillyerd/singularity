@@ -26,6 +26,7 @@ type Actors {
 
 pub fn example_test() {
   let assert Ok(registry) = singularity.start()
+  let registry = registry.data
 
   // Create a couple dummy actors.
   let assert Ok(actor.Started(_, actor_a)) = actor.start(actor.new(Nil))
@@ -52,6 +53,7 @@ pub fn example_test() {
 
 pub fn try_get_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   // Verify actors are not registered.
   singularity.try_get(reg, ActorA)
@@ -73,6 +75,7 @@ pub fn try_get_test() {
 
 pub fn fixed_delay_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   let restart_func = fn() {
     singularity.restart_delay(
@@ -90,6 +93,7 @@ pub fn fixed_delay_test() {
 
 pub fn exponential_delay_unlimited_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   let restart_func = fn() {
     singularity.restart_delay(
@@ -112,6 +116,7 @@ pub fn exponential_delay_unlimited_test() {
 
 pub fn exponential_delay_limited_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   let restart_func = fn() {
     singularity.restart_delay(
@@ -135,6 +140,7 @@ pub fn exponential_delay_limited_test() {
 
 pub fn exponential_delay_resets_after_good_ms_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   let restart_func = fn() {
     singularity.restart_delay(
@@ -160,6 +166,7 @@ pub fn exponential_delay_resets_after_good_ms_test() {
 
 pub fn exponential_good_doesnt_include_sleep_time_test() {
   let assert Ok(reg) = singularity.start()
+  let reg = reg.data
 
   let restart_func = fn() {
     singularity.restart_delay(
