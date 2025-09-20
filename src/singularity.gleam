@@ -45,6 +45,7 @@ import gleam/erlang/process.{type Monitor, type Pid, type Selector, type Subject
 import gleam/int
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/otp/supervision
 import gleam/result
 import gleam/time/duration.{type Duration}
 import gleam/time/timestamp.{type Timestamp}
@@ -76,7 +77,10 @@ type Actor(wrap) {
 ///
 /// Note: Gleam actors are linked to the parent process by default.
 ///
-pub fn start() -> Result(Subject(Message(wrap)), actor.StartError) {
+pub fn start() -> Result(
+  actor.Started(Subject(Message(wrapped))),
+  actor.StartError,
+) {
   actor.new_with_initialiser(100, fn(subj) {
     let selector =
       process.new_selector()
@@ -89,13 +93,17 @@ pub fn start() -> Result(Subject(Message(wrap)), actor.StartError) {
   })
   |> actor.on_message(handle_message)
   |> actor.start
-  |> result.map(fn(started) { started.data })
 }
 
 /// Shuts down the registry.  Does not affect registered actors.
 ///
 pub fn stop(actor: Subject(Message(wrap))) {
   actor.send(actor, Shutdown)
+}
+
+/// Convenience function for adding to a supervisor.
+pub fn supervised() -> supervision.ChildSpecification(Subject(Message(wrap))) {
+  supervision.worker(run: start)
 }
 
 /// Registers an actor, using the actors wrapper type constructor as a key.
