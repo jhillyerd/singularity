@@ -61,7 +61,7 @@ pub fn try_get_test() {
 
   // Register an actor via map_started.
   let assert Ok(actor_a) =
-    actor.start(actor.new(Nil)) |> singularity.map_started(reg, ActorA)
+    actor.start(actor.new(Nil)) |> singularity.map_started(in: reg, key: ActorA)
 
   // Retrieve and verify registered actors.
   let assert Ok(ActorA(got_a)) = singularity.try_get(reg, ActorA)

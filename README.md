@@ -29,6 +29,7 @@ processes in the BEAM VM, which can make unit tests brittle.
 Gleam alternatives:
 
 - [chip]
+- named actors in [gleam_otp]
 
 ## Operation
 
@@ -36,7 +37,7 @@ Singularity is itself an actor, so you must start it and keep a reference to
 it anywhere you wish to register or retrieve other actors.
 
 ```gleam
-let assert Ok(registry) = singularity.start()
+let assert Ok(actor.Started(_, registry)) = singularity.start()
 ```
 
 Type safety is ensured by utilizing a wrapper type that can hold any of the
@@ -55,7 +56,7 @@ type is used as a key:
 
 ```gleam
 // Registration.
-let assert Ok(bulb_a) = bulb.start()
+let assert Ok(actor.Started(_, bulb_a)) = bulb.start()
 singularity.register(in: registry, key: LightBulbA, subject: bulb_a)
 
 // Retrieval.
@@ -169,8 +170,8 @@ pub fn main() {
 This is an abstract example to illustrate usage within a supervisor.
 
 ```gleam
-import gleam/erlang/process
 import gleam/otp/supervisor
+import gleam/otp/supervision
 import gleam/result
 import singularity
 import inner_actor
@@ -182,44 +183,36 @@ pub type Actor {
 }
 
 pub fn main() {
-  let assert Ok(registry) = singularity.start()
+  let assert Ok(actor.Started(_, registry)) = singularity.start()
 
   // Create worker init functions.
   let inner_child =
-    supervisor.worker(fn(_state) {
+    supervision.worker(fn() {
       // Inner has no dependencies, start and register it.
       inner_actor.start()
-      |> result.map(singularity.register(registry, Inner, subject: _))
+      |> singularity.map_started(in: registry, key: Inner)
     })
 
   let outer_child =
-    supervisor.worker(fn(_state) {
+    supervision.worker(fn() {
       // Outer depends on Inner, fetch it.
       let assert Inner(inner) =
-        singularity.require(registry, Inner, timeout_ms: 5000)
+        singularity.require(in: registry, key: Inner, timeout_ms: 5000)
 
       // Start and register Outer.
       outer_actor.start(inner)
-      |> result.map(singularity.register(registry, Outer, subject: _))
+      |> singularity.map_started(in: registry, key: Outer)
     })
 
   // Start the supervisor.
   let assert Ok(_) =
-    supervisor.start_spec(
-      supervisor.Spec(
-        argument: Nil,
-        frequency_period: 1,
-        max_frequency: 5,
-        init: fn(children) {
-          children
-          |> supervisor.add(inner_child)
-          |> supervisor.add(outer_child)
-        },
-      ),
-    )
+    supervisor.new(supervisor.OneForOne)
+    |> supervisor.add(inner_child)
+    |> supervisor.add(outer_child)
+    |> supervisor.start
 
   let assert Outer(outer) =
-    singularity.require(registry, Outer, timeout_ms: 5000)
+    singularity.require(in: registry, key: Outer, timeout_ms: 5000)
 
   outer_actor.do_something(outer)
 }
@@ -236,5 +229,6 @@ gleam shell # Run an Erlang shell
 
 
 [chip]:            https://hexdocs.pm/chip/
+[gleam_otp]:       https://hexdocs.pm/gleam_otp/
 [Subject]:         https://hexdocs.pm/gleam_erlang/gleam/erlang/process.html#Subject
 [worker start]:    https://hexdocs.pm/gleam_otp/gleam/otp/supervisor.html#worker 
