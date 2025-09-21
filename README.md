@@ -227,9 +227,6 @@ pub fn main() {
 }
 ```
 
-See the [examples](https://github.com/jhillyerd/singularity/tree/main/examples)
-directory for more complete examples.
-
 Further documentation can be found at <https://hexdocs.pm/singularity>.
 
 ## Development
