@@ -3,7 +3,9 @@
 [![Package Version](https://img.shields.io/hexpm/v/singularity)](https://hex.pm/packages/singularity)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/singularity/)
 
-Singularity is a registry for shared singleton actors, in Gleam.
+Singularity is a registry for shared singleton actors, in Gleam. Please note
+that Singularity has been made mostly redundant by the addition of named actors
+in [gleam_otp]; valid uses of Singularity should be rare.
 
 ## Purpose
 
