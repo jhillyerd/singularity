@@ -92,7 +92,7 @@ Example use of exponential back-off with `static_supervisor`:
 supervisor.new(supervisor.OneForOne)
 |> supervisor.restart_tolerance(intensity: 5, period: 60)
 |> supervisor.add(
-  supervisor.worker_child("bulb_a", fn() {
+  supervision.worker(fn() {
     // Will delay startup after the first failure.
     singularity.restart_delay(
       in: registry,
@@ -105,11 +105,10 @@ supervisor.new(supervisor.OneForOne)
     )
 
     bulb.start()
-    |> result.map(singularity.register(in: registry, key: HA, subject: _))
-    |> actor.to_erlang_start_result
+    |> singularity.map_started(in: registry, key: LightBulbA)
   }),
 )
-|> supervisor.start_link
+|> supervisor.start
 ```
 
 Actors do not need to be registered with Singularity to use the restart delay
