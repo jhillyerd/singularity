@@ -142,19 +142,17 @@ type Actor {
 }
 
 pub fn main() {
-  let assert Ok(registry) = singularity.start()
+  let assert Ok(actor.Started(_, registry)) = singularity.start()
 
-  // Create a couple dummy actors, having unique message types.
-  let assert Ok(actor_a) =
-    actor.start(Nil, fn(_msg: MsgA, state) { actor.continue(state) })
-  let assert Ok(actor_b) =
-    actor.start(Nil, fn(_msg: MsgB, state) { actor.continue(state) })
+  // Create a couple dummy actors.
+  let assert Ok(actor.Started(_, actor_a)) = actor.start(actor.new(Nil))
+  let assert Ok(actor.Started(_, actor_b)) = actor.start(actor.new(Nil))
 
-  // Register the actors specifying the wrapper (`Actor`) variant.
+  // Register the actors specifying the wrapper (`Actors`) variant.
   // Note that the `subject` argument is not wrapped in the Actors
   // type here.
-  singularity.register(in: registry, key: ActorA, subject: actor_a)
-  singularity.register(in: registry, key: ActorB, subject: actor_b)
+  let _ = singularity.register(in: registry, key: ActorA, subject: actor_a)
+  let _ = singularity.register(in: registry, key: ActorB, subject: actor_b)
 
   // Retrieve and verify registered actors.  These are wrapped.
   let assert ActorA(got_a) =
