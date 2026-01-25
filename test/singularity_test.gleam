@@ -207,13 +207,13 @@ fn should_take(got: Duration, ms want: Int, within within: Int) {
   case duration.compare(diff, within) {
     order.Gt -> {
       panic as {
-          "Took "
-          <> dur_fmt(got)
-          <> ", which was not within "
-          <> dur_fmt(within)
-          <> " of "
-          <> dur_fmt(want)
-        }
+        "Took "
+        <> dur_fmt(got)
+        <> ", which was not within "
+        <> dur_fmt(within)
+        <> " of "
+        <> dur_fmt(want)
+      }
     }
     _ -> Nil
   }
